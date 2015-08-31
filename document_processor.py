@@ -1,6 +1,5 @@
 import config
 from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.cluster import KMeans
 import itertools
 
@@ -29,14 +28,14 @@ class DocumentsProcessor:
         f.close()
         return data
 
-    def getDocumentsText(self):
+    '''def getDocumentsText(self):
         for name in self.dataset_name[:1]:
             with open(config.PRE_PROCESSED_DATASETS + name +'.json', 'r') as f:
                 data = json.load(f)
                 print 'dataset %s: %s documents and %s classes' %(name, len(data['data']), len(data['labels']))
                 tfidf_vectorizer = TfidfVectorizer(max_df=1.0, max_features=200000,
-                                 min_df=2, stop_words='english',
-                                 use_idf=True, tokenizer=tu.TextUtils.tokenize_only, ngram_range=(1, 1))
+                                 min_df=0.002, stop_words='english',
+                                 use_idf=True, tokenizer=tu.TextUtils.tokenize_and_stem(), ngram_range=(1, 1))
 
                 tfidf_matrix = tfidf_vectorizer.fit_transform(data['data'])
 
@@ -45,13 +44,14 @@ class DocumentsProcessor:
                 dist = 1 - cosine_similarity(tfidf_matrix)
 
                 num_clusters = len(set(data['labels']))
+    '''
 
     @property
     def tfidf_matrix(self):
         print 'dataset %s: %s documents and %s classes' %(self.dataset_name, len(self.data['data']), len(self.data['labels']))
-        tfidf_vectorizer = TfidfVectorizer(max_df=1.0, max_features=200000,
+        tfidf_vectorizer = TfidfVectorizer(max_df=0.5, max_features=200000,
                          min_df=2, stop_words='english',
-                         use_idf=True, tokenizer=tu.TextUtils.tokenize_only, ngram_range=(1, 1))
+                         use_idf=True, tokenizer=tu.TextUtils.tokenize_and_stem, ngram_range=(1, 1))
 
         tfidf_matrix = tfidf_vectorizer.fit_transform(self.data['data'])
 
@@ -66,13 +66,12 @@ class DocumentsProcessor:
         for l in sorted(set(labels)):
             dict_out[l] = {
                 'docs': [],
-                'fscore': []
+                'fscore': ''
             }
 
-        print dict_out
         for i in range(len(docs)):
             dict_out[labels[i]]['docs'].append(i)
-
+        #print dict_out
         return dict_out
 
     def apply_clustering(self):
