@@ -8,7 +8,7 @@ __author__ = 'biagio'
 
 class DocumentsExtractor:
 
-    _allowed_datasets = ['reuters']
+    _allowed_datasets = ['reuters', '20NG']
 
     def __init__(self, dataset_name):
         if dataset_name in self._allowed_datasets:
@@ -21,9 +21,48 @@ class DocumentsExtractor:
             rt_extractor = ReutersDocumentExtractor()
             rt_extractor.collect_documents()
 
+class TwentyNGDocumentExtractor:
+    dir = config.TWENTY_NG_DATASET_DIR
+
+    def __init__(self):
+        self.name = '20NG'
+
+    def get_classes(self):
+        folders = [d for d in sorted(os.listdir(self.dir))]
+        cc = []
+        for folder in folders:
+            classes = folder.split('.')
+            c = ''
+            for cl in classes:
+                if not c:
+                    c = cl
+                else:
+                    c = '%s.%s' % (c, cl)
+                cc.append(c)
+        return set(cc)
+
+    def get_file(self):
+        dir = self.dir
+
+        folders = [d for d in os.listdir(dir)]
+
+        pp.pprint(folders)
+
+        for folder in folders[:1]:
+            classes = folder.split('.')
+            for file in os.listdir(os.path.join(dir, folder))[:1]:
+                print file, classes
+                ff = os.path.join(dir, folder)
+                with open(os.path.join(ff, file), 'r') as f:
+                    data = f.read()
+                    tmp = {
+                        'id_docs': file,
+                        'text': data,
+                        'label': classes
+                    }
+                    pp.pprint(tmp)
 
 class ReutersDocumentExtractor:
-
     reuters_dataset_dir = config.DATASETS_DIR + 'reuters/'
     classes = {
         're0': ['bop',
@@ -128,7 +167,10 @@ class ReutersDocumentExtractor:
         print '%s documents collected' % docs_found
 
 if __name__ == '__main__':
-    doc_proc = DocumentsExtractor('reuters')
-    doc_proc.extract_documents()
+    doc_proc = DocumentsExtractor('20NG')
+    #doc_proc.extract_documents()
+
+    t = TwentyNGDocumentExtractor()
+    t.get_classes()
 
 

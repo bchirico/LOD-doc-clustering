@@ -46,7 +46,8 @@ class DocumentsProcessor:
         only_labels = [doc['label'] for doc in data]
         tfidf_vectorizer = TfidfVectorizer(max_df=0.5, max_features=200000,
                          min_df=2, stop_words='english',
-                         use_idf=True, tokenizer=tu.TextUtils.tokenize_and_stem, ngram_range=(1, 1))
+                         use_idf=True, tokenizer=tu.TextUtils.tokenize_and_stem,
+                         ngram_range=(1, 1))
         tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
 
         dict_out = {}
@@ -116,9 +117,10 @@ class DocumentsProcessor:
 
         print tfidf_matrix.shape
         return tfidf_matrix
+
 if __name__ == '__main__':
     rt = DocumentsProcessor('re0')
-    rt.tfidf_matrix
+    tfidf_matrix, dict_eval = rt.get_data()
 
     #tfidf_matrix, dict_eval = rt.get_data()
     pp.pprint(tfidf_matrix)

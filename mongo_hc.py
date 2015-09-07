@@ -15,8 +15,21 @@ class MongoHC:
         self.collection = getattr(self.db, collection)
 
     def save_document(self, doc, collection=None):
+        # TODO - replace save with insert_one
+
+        '''
+
+        :param doc:
+        :param collection: Optional. Collection where document has to be saved.
+        :return:
+        '''
         c = getattr(self.db, collection) if collection else self.collection
+        print 'Saving document'
+        print '-' * 80
         c.save(doc)
+
+    def update_document(self, doc):
+        pass
 
     def get_element_by_id(self, id, collection=None):
         c = getattr(self.db, collection) if collection else self.collection
@@ -32,6 +45,16 @@ class MongoHC:
         c = getattr(self.db, collection) if collection else self.collection
         return c.count() == 0
 
+    def remove_document_by_id(self, id, collection=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        return c.delete_one({'id_doc': id})
+
+    def safe_mode(self, collection=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        if not self.is_empty(collection):
+            raise MongoHCException('Operation denied: Database is not empty!')
+        else:
+            return True
 
 def mongo_test():
     mongo = MongoHC('hc', 'test')
@@ -50,30 +73,8 @@ def mongo_test():
     for doc in cursor:
         pp.pprint(doc)
 
-
-
-def init_reuters_db():
+def init_db(dataset, db):
     from document_processor import DocumentsProcessor
-    parser = argparse.ArgumentParser(
-        description='Script to initialize db')
-
-    parser.add_argument('-d',
-                        dest='dataset',
-                        help='Dataset name',
-                        required=True,
-                        choices=['re0', 're1'])
-
-    parser.add_argument('--db',
-                        dest='db',
-                        help='DB name',
-                        required=True,
-                        choices=['hc'])
-
-    args = parser.parse_args()
-
-    dataset = args.dataset
-    db = args.db
-
     dp = DocumentsProcessor(dataset)
     mongo_hc = MongoHC(db, dataset)
 
@@ -87,5 +88,50 @@ def init_reuters_db():
             print 'Saving document %s' %doc['id_doc']
             mongo_hc.save_document(doc)
 
+def duplicate_db(dataset, db):
+    mongo_from = MongoHC(db, dataset)
+    mongo_to = MongoHC(db, dataset + '_for_alchemy')
+
+    if mongo_to.safe_mode():
+        data = mongo_from.get_all(order_by='id_doc')
+        for d in data:
+            try:
+                mongo_to.save_document(d)
+            except Exception, e:
+                print e
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Script that performs action on db')
+
+    parser.add_argument('-d',
+                        dest='dataset',
+                        help='Dataset name',
+                        required=True,
+                        choices=['re0', 're1'])
+
+    parser.add_argument('--db',
+                        dest='db',
+                        help='DB name',
+                        required=True,
+                        choices=['hc'])
+
+    parser.add_argument('--action', '-a',
+                        dest='action',
+                        help='specify action to perform',
+                        required=True,
+                        choices=['create', 'duplicate'])
+
+    args = parser.parse_args()
+
+    dataset = args.dataset
+    db = args.db
+    action = args.action
+
+    if action == 'create':
+        init_db(dataset, db)
+    elif action == 'duplicate':
+        duplicate_db(dataset, db)
+
 if __name__ == '__main__':
-    init_reuters_db()
+    main()

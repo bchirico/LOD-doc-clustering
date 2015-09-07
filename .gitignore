@@ -56,4 +56,11 @@ docs/_build/
 # PyBuilder
 target/
 
+# my ignore
 results.csv
+api_key.txt
+alchemyapi_python/
+LOD-entity-recommendation/
+datasets/20NG/
+
+
