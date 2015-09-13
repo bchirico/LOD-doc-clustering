@@ -3,12 +3,14 @@ import logging
 import time
 import random
 import sys
+import traceback
 
 import spotlight
 import queryGenerator
 
 from mongo_hc import MongoHC
 from alchemyapi_python.alchemyapi import AlchemyAPI
+from dandelion import DataTXT
 from SPARQLWrapper import SPARQLWrapper, XML, JSON
 
 import pprint as pp
@@ -21,6 +23,8 @@ f = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s %(lineno)d %(messa
 h.setFormatter(f)
 x.addHandler(h)
 logfun = logging.getLogger("logfun")
+
+#TODO: refactoring, ma soprattutto documentazione
 
 def extract_entity(db, dataset):
     mongo_from = MongoHC(db, dataset + '_for_alchemy')
@@ -36,6 +40,7 @@ def extract_entity(db, dataset):
         try:
             entitySet,annotationsSorted,response = getAnnotation(doc['text'])
             doc['abstracts'] = []
+            doc['alchemy_response'] = response
             for e in entitySet:
                 logfun.info('Extracting abstract for entity %s' % e)
 
@@ -53,6 +58,65 @@ def extract_entity(db, dataset):
             logfun.error("Something awful happened!")
             logfun.error(e)
             logfun.error(sys.exc_info()[2])
+
+def extract_abstract(db, dataset):
+    mongo = MongoHC(db, dataset)
+
+    docs = [doc for doc in mongo.get_empty_abstract()]
+
+    for doc in docs:
+        try:
+            for e in doc['entity_set']:
+                logfun.info('Extracting abstract for entity %s' % e)
+                abstract = get_abstract(e)
+                if abstract:
+                    doc['abstracts'].append(abstract)
+                else:
+                    logfun.warning('Abstract not found!')
+                logfun.info('-' * 80)
+
+            mongo.save_document(doc)
+        except Exception, e:
+            logfun.error("Something awful happened!")
+            logfun.error(e)
+            logfun.error(sys.exc_info()[2])
+
+def extract_alchemy(db, dataset):
+    mongo = MongoHC(db, dataset)
+
+    docs = [doc for doc in mongo.get_doc_with_no_key('alchemy_response')]
+
+    for doc in docs:
+        try:
+            entitySet,annotationsSorted,response = getAnnotation(doc['text'])
+            doc['alchemy_response'] = response
+            mongo.save_document(doc)
+        except Exception, e:
+            logfun.error("Something awful happened!")
+            logfun.error(e)
+            logfun.error(sys.exc_info()[2])
+
+def extract_dandelion(db, dataset):
+    mongo = MongoHC(db, dataset)
+
+    docs = [doc for doc in mongo.get_doc_with_no_key('dandelion',
+                                                     order_by='id_doc')]
+
+    for doc in docs:
+        try:
+            dan = get_entities_from_dandelion(doc['text'])
+            logfun.info(dan['timestamp'])
+            doc['dandelion'] = dan
+            mongo.save_document(doc)
+        except Exception, e:
+            logfun.error(traceback.format_exc())
+
+
+def get_entities_from_dandelion(text):
+    # TODO: mettere le keys in un file di setting
+    datatxt = DataTXT(app_id='7c418708', app_key='0043c60be84a1f471184a192fe06e540')
+    result = datatxt.nex(text, include_lod=True, language='en')
+    return result
 
 
 def get_abstract(entity):
@@ -83,7 +147,7 @@ def getAnnotation(text):
       u'offset': 321,
       u'percentageOfSecondRank': -1.0,
       u'similarityScore': 0.08647863566875458,
-      u'support': 426,
+      u'support': 426, #
       u'surfaceForm': u'people',
       u'types': u'DBpedia:TopicalConcept'}
     """
@@ -91,7 +155,7 @@ def getAnnotation(text):
     alchemyapi = AlchemyAPI()
     response = alchemyapi.entities('text', text, {'sentiment': 1})
     resFilt=filter(lambda x: 'disambiguated' in x, response['entities'])
-    key=['dbpedia','geonames','yago','opencyc']
+    key=['dbpedia', 'geonames', 'yago', 'opencyc']
     resFilt
 
     entitySet=set()
@@ -121,6 +185,60 @@ def getAnnotation(text):
 
     return entitySet,annotationsSorted,response
 
+def test(db, dataset):
+    mongo = MongoHC(db, dataset)
+    docs = mongo.get_element_by_id(1114)
+    docs = [docs]
+
+    for doc in docs[:1]:
+        logfun.info('#' * 80)
+        logfun.info('Scanning documents: %(id_doc)s' % doc)
+        logfun.info('#' * 80)
+        #try:
+        entitySet,annotationsSorted,response = getAnnotation(doc['text'])
+        '''doc['abstracts'] = []
+        for e in entitySet:
+            logfun.info('Extracting abstract for entity %s' % e)
+
+            abstract = get_abstract(e)
+            if abstract:
+                doc['abstracts'].append(abstract)
+            else:
+                logfun.warning('Abstract not found!')
+            logfun.info('-' * 80)
+
+        doc['entity_set'] = list(entitySet)'''
+
+        pp.pprint(response)
+
+        #except Exception, e:
+        #    raise e
+
+def entities_distribution(db, dataset):
+    mongo = MongoHC(db, dataset)
+
+    data = [doc for doc in mongo.get_all(order_by='id_doc')]
+
+    entities = set()
+
+    for d in data:
+        for e in d['alchemy_response']['entities']:
+            entities.add(e['text'])
+
+    entities_dict = {e: 0 for i, e in enumerate(entities)}
+
+    for d in data:
+        for e in d['alchemy_response']['entities']:
+            entities_dict[e['text']] += 1
+
+    return entities_dict, entities
+
+def test_alchemy():
+    text = "The Louvre agreement by the Group of Seven finance ministers and central bankers to stabilise currencies has worked well and needs no fundamental strengthening at the economic summit in Venice on June 8-10, U.K. Chancellor of the Exchequer Nigel Lawson said."
+    alchemyapi = AlchemyAPI()
+    response = alchemyapi.entities('text', text, {'sentiment': 1})
+
+    pp.pprint(response)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -138,13 +256,29 @@ def main():
                         required=True,
                         choices=['hc'])
 
+    parser.add_argument('--action',
+                        dest='action',
+                        help='action to perform',
+                        required=True,
+                        choices=['all', 'abstract', 'alchemy', 'test', 'dandelion'])
+
     args = parser.parse_args()
     dataset = args.dataset
     db = args.db
+    action = args.action
 
-    extract_entity(db, dataset)
+    if action == 'all':
+        extract_entity(db, dataset)
+    elif action == 'abstract':
+        extract_abstract(db, dataset)
+    elif action == 'test':
+        test(db, dataset)
+    elif action == 'alchemy':
+        extract_alchemy(db, dataset)
+    elif action == 'dandelion':
+        extract_dandelion(db, dataset)
 
 if __name__ == '__main__':
     main()
-
+    #test_alchemy()
     #get_abstract()

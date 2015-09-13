@@ -1,15 +1,19 @@
 __author__ = 'biagio'
 
-import document_processor as dp
 import pprint as pp
 import numpy as np
-import itertools
 from scipy.cluster import hierarchy as hr
 import argparse
 
-def scipy_algo(dataset):
+import document_processor as dp
+
+
+# TODO: refactoring delle funzioni, c'e' troppa ripetizione e non ho voglia di
+#       cambiare tutto se faccio delle modifiche
+
+def scipy_algo(dataset, abstract=False):
     doc_proc = dp.DocumentsProcessor(dataset)
-    tfidf_matrix, f_score_dict = doc_proc.get_data()
+    tfidf_matrix, f_score_dict = doc_proc.get_data(abstract)
 
     linkage_matrix = hr.average(tfidf_matrix.toarray())
 
@@ -26,7 +30,77 @@ def scipy_algo(dataset):
 
     print_f_score_dict(f)
 
+    avg_f_score = average_f_score(f, tfidf_matrix.shape[0])
+    print 'average f_score: %s' % avg_f_score
+    return avg_f_score
+
+def scipy_algo_cosine(dataset, abstract=False):
+    '''
+    al momento non riesco a clusterizzare utilizzando la cosine_similarity
+    perche' sembra esserci un bug di scipy che ritorna una distanza negativa
+
+    https://github.com/scipy/scipy/issues/5208
+
+    :param dataset:
+    :param abstract:
+    :return:
+    '''
+    doc_proc = dp.DocumentsProcessor(dataset)
+    tfidf_matrix, f_score_dict = doc_proc.get_data(abstract)
+
+    linkage_matrix = hr.linkage(tfidf_matrix.todense(),
+                                method='average',
+                                metric='cosine')
+
+    print linkage_matrix.shape
+    print linkage_matrix[linkage_matrix < 0].shape
+    return
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    print_f_score_dict(f)
+
     print 'average f_score: %s' % average_f_score(f, tfidf_matrix.shape[0])
+
+def cluster_alchemy(dataset, gamma=None, filter=False):
+    doc_proc = dp.DocumentsProcessor(dataset)
+    if gamma:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_alchemy(gamma=gamma, filter=filter)
+    else:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_alchemy()
+
+    print 'starting clustering: found %s document and %s features' \
+          % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
+
+    linkage_matrix = hr.average(tfidf_matrix.toarray())
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    l = print_f_score_dict(f)
+
+    params['avg_f_score'] = average_f_score(f, tfidf_matrix.shape[0])
+    params['all_fscore'] = l
+
+    print 'average f_score: %s' % params['avg_f_score']
+    return params
 
 def collect_leaf_nodes(node, leaves):
     if node is not None:
@@ -37,7 +111,9 @@ def collect_leaf_nodes(node, leaves):
     return leaves
 
 def print_f_score_dict(f):
-    pp.pprint([f[d]['fscore'] for d in f])
+    l = [f[d]['fscore'] for d in f]
+    pp.pprint(l)
+    return l
 
 def average_f_score(f_score_dict, n):
     f_score = [f_score_dict[d]['fscore'] for d in f_score_dict]
@@ -78,8 +154,25 @@ if __name__ == '__main__':
                         help='Dataset name',
                         required=True,
                         choices=['re0', 're1'])
+
+    parser.add_argument('--abstract', '-a',
+                        dest='abstract',
+                        help='specify action to perform',
+                        required=False,
+                        action='store_true')
+
+    parser.add_argument('--alchemy',
+                        dest='alchemy',
+                        help='Cluster solutions is obtained with BOW method and'
+                             ' entities\'relevance extracted with alchemyAPI',
+                        required=False,
+                        action='store_true')
+
     args = parser.parse_args()
 
     dataset = args.dataset
 
-    scipy_algo(dataset)
+    if args.alchemy:
+        cluster_alchemy(dataset)
+    else:
+        scipy_algo(dataset, args.abstract)

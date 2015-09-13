@@ -4,9 +4,6 @@ import pymongo as pm
 import pprint as pp
 import argparse
 
-class MongoHCException(Exception):
-    pass
-
 class MongoHC:
 
     def __init__(self, db, collection):
@@ -41,6 +38,26 @@ class MongoHC:
             return c.find({}).sort([(order_by, pm.ASCENDING)])
         return c.find({})
 
+    def get_by_key(self, key, value, collection=None, order_by=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        query = {key: value}
+        if order_by:
+            return c.find(query).sort([(order_by, pm.ASCENDING)])
+        return c.find(query)
+
+    def get_empty_abstract(self, collection=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        query = {'abstracts': {'$exists': True, '$size': 0}}
+        return c.find(query)
+
+    def get_doc_with_no_key(self, key, collection=None, order_by=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        query = {key: {'$exists': False}}
+        if order_by:
+            return c.find(query).sort([(order_by, pm.ASCENDING)])
+        else:
+            return c.find(query)
+
     def is_empty(self, collection=None):
         c = getattr(self.db, collection) if collection else self.collection
         return c.count() == 0
@@ -49,10 +66,14 @@ class MongoHC:
         c = getattr(self.db, collection) if collection else self.collection
         return c.delete_one({'id_doc': id})
 
+    def custom_query(self, query, collection=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        return c.find(query)
+
     def safe_mode(self, collection=None):
         c = getattr(self.db, collection) if collection else self.collection
         if not self.is_empty(collection):
-            raise MongoHCException('Operation denied: Database is not empty!')
+            raise Exception('Operation denied: Database is not empty!')
         else:
             return True
 
@@ -78,15 +99,13 @@ def init_db(dataset, db):
     dp = DocumentsProcessor(dataset)
     mongo_hc = MongoHC(db, dataset)
 
-    if not mongo_hc.is_empty():
-        raise MongoHCException('Operation denied: Database is not empty!')
+    if mongo_hc.safe_mode():
+        data = dp.get_data_grouped
 
-    data = dp.get_data_grouped
-
-    for k, v in data.iteritems():
-        for doc in v['docs']:
-            print 'Saving document %s' %doc['id_doc']
-            mongo_hc.save_document(doc)
+        for k, v in data.iteritems():
+            for doc in v['docs']:
+                print 'Saving document %s' %doc['id_doc']
+                mongo_hc.save_document(doc)
 
 def duplicate_db(dataset, db):
     mongo_from = MongoHC(db, dataset)
@@ -100,6 +119,15 @@ def duplicate_db(dataset, db):
             except Exception, e:
                 print e
 
+def clean_text(dataset, db):
+    mongo = MongoHC(db, dataset)
+    docs = [doc for doc in mongo.get_all(order_by='id_doc')]
+
+    for doc in docs:
+        doc['text'] = doc['text'].replace('\n', ' ')
+        mongo.save_document(doc)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Script that performs action on db')
@@ -108,7 +136,8 @@ def main():
                         dest='dataset',
                         help='Dataset name',
                         required=True,
-                        choices=['re0', 're1'])
+                        choices=['re0', 're1', 're0_for_alchemy',
+                                 're1_for_alchemy'])
 
     parser.add_argument('--db',
                         dest='db',
@@ -120,7 +149,7 @@ def main():
                         dest='action',
                         help='specify action to perform',
                         required=True,
-                        choices=['create', 'duplicate'])
+                        choices=['create', 'duplicate', 'clean_text'])
 
     args = parser.parse_args()
 
@@ -132,6 +161,12 @@ def main():
         init_db(dataset, db)
     elif action == 'duplicate':
         duplicate_db(dataset, db)
+    elif action == 'clean_text':
+        clean_text(dataset, db)
+
+def test_get_empty_abstract():
+    mongo = MongoHC('hc', 're0')
+    mongo.get_empty_abstract()
 
 if __name__ == '__main__':
     main()
