@@ -81,6 +81,33 @@ def extract_abstract(db, dataset):
             logfun.error(e)
             logfun.error(sys.exc_info()[2])
 
+def extract_abstract_dandelion(db, dataset):
+    mongo = MongoHC(db, dataset)
+    mongo_dbpedia = MongoHC(db, 'dbpedia')
+    docs = [doc for doc in mongo.get_all(order_by='id_doc')]
+
+    for doc in docs:
+        try:
+            entities = [e['lod']['dbpedia'] for e in doc['dandelion']['annotations']]
+            for e in entities:
+                if mongo_dbpedia.get_element_by_mongo_id(e):
+                    logfun.info('Entities already in database')
+                    continue
+                dbpedia = {}
+                logfun.info('Extracting abstract for entity %s' % e)
+                abstract = get_abstract(e)
+                if abstract:
+                  dbpedia['_id'] = e
+                  dbpedia['abstract'] = abstract
+                  mongo_dbpedia.save_document(dbpedia)
+                else:
+                    logfun.warning('Abstract not found!')
+                logfun.info('-' * 80)
+        except Exception, e:
+            logfun.error("Something awful happened!")
+            logfun.error(e)
+            logfun.error(sys.exc_info()[2])
+
 def extract_alchemy(db, dataset):
     mongo = MongoHC(db, dataset)
 
@@ -234,11 +261,17 @@ def entities_distribution(db, dataset):
     return entities_dict, entities
 
 def test_alchemy():
-    text = "The Louvre agreement by the Group of Seven finance ministers and central bankers to stabilise currencies has worked well and needs no fundamental strengthening at the economic summit in Venice on June 8-10, U.K. Chancellor of the Exchequer Nigel Lawson said."
+    text = "The decision by the independent MP Andrew Wilkie to withdraw his support for the minority Labor government sounded dramatic but it should not further threaten its stability. When, after the 2010 election, Wilkie, Rob Oakeshott, Tony Windsor and the Greens agreed to support Labor, they gave just two guarantees: confidence and supply"
     alchemyapi = AlchemyAPI()
     response = alchemyapi.entities('text', text, {'sentiment': 1})
 
     pp.pprint(response)
+
+def test_dandelion():
+    text = "The decision by the independent MP Andrew Wilkie to withdraw his support for the minority Labor government sounded dramatic but it should not further threaten its stability. When, after the 2010 election, Wilkie, Rob Oakeshott, Tony Windsor and the Greens agreed to support Labor, they gave just two guarantees: confidence and supply"
+    result = get_entities_from_dandelion(text)
+
+    pp.pprint(result)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -270,7 +303,7 @@ def main():
     if action == 'all':
         extract_entity(db, dataset)
     elif action == 'abstract':
-        extract_abstract(db, dataset)
+        extract_abstract_dandelion(db, dataset)
     elif action == 'test':
         test(db, dataset)
     elif action == 'alchemy':

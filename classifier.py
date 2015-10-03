@@ -34,6 +34,7 @@ def scipy_algo(dataset, abstract=False):
     print 'average f_score: %s' % avg_f_score
     return avg_f_score
 
+
 def scipy_algo_cosine(dataset, abstract=False):
     '''
     al momento non riesco a clusterizzare utilizzando la cosine_similarity
@@ -71,6 +72,7 @@ def scipy_algo_cosine(dataset, abstract=False):
 
     print 'average f_score: %s' % average_f_score(f, tfidf_matrix.shape[0])
 
+
 def cluster_alchemy(dataset, gamma=None, filter=False):
     doc_proc = dp.DocumentsProcessor(dataset)
     if gamma:
@@ -102,6 +104,40 @@ def cluster_alchemy(dataset, gamma=None, filter=False):
     print 'average f_score: %s' % params['avg_f_score']
     return params
 
+
+def cluster_dandelion(dataset, gamma=None, filter=False):
+    doc_proc = dp.DocumentsProcessor(dataset)
+    if gamma:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_dandelion(
+            gamma=gamma, filter=filter)
+    else:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_dandelion()
+
+    print 'starting clustering: found %s document and %s features' \
+          % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
+
+    linkage_matrix = hr.average(tfidf_matrix.toarray())
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    l = print_f_score_dict(f)
+
+    params['avg_f_score'] = average_f_score(f, tfidf_matrix.shape[0])
+    params['all_fscore'] = l
+
+    print 'average f_score: %s' % params['avg_f_score']
+    return params
+
+
 def collect_leaf_nodes(node, leaves):
     if node is not None:
         if node.is_leaf():
@@ -110,10 +146,12 @@ def collect_leaf_nodes(node, leaves):
             collect_leaf_nodes(n, leaves)
     return leaves
 
+
 def print_f_score_dict(f):
     l = [f[d]['fscore'] for d in f]
     pp.pprint(l)
     return l
+
 
 def average_f_score(f_score_dict, n):
     f_score = [f_score_dict[d]['fscore'] for d in f_score_dict]
@@ -125,6 +163,7 @@ def average_f_score(f_score_dict, n):
         #print n, nr, f, f_score_dict[d]['fscore']
         average += f
     return average
+
 
 def f_score(clusters, f_score_dict):
     for cl in f_score_dict:
@@ -168,11 +207,20 @@ if __name__ == '__main__':
                         required=False,
                         action='store_true')
 
+    parser.add_argument('--dandelion',
+                    dest='dandelion',
+                    help='Cluster solutions is obtained with BOW method and'
+                         ' entities\'relevance extracted with dataTXT',
+                    required=False,
+                    action='store_true')
+
     args = parser.parse_args()
 
     dataset = args.dataset
 
     if args.alchemy:
         cluster_alchemy(dataset)
+    elif args.dandelion:
+        cluster_dandelion(dataset)
     else:
         scipy_algo(dataset, args.abstract)

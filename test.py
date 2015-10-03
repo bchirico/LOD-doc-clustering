@@ -7,6 +7,7 @@ import numpy as np
 
 mongo = MongoHC('hc', 'test')
 
+
 def first_test_re0():
     for i, g in enumerate(np.arange(0.1, 1, 0.01)):
         result = clf.cluster_alchemy('re1', gamma=g, filter=True)
@@ -14,6 +15,7 @@ def first_test_re0():
         result['n_attempt'] = i+1
         result['test'] = 'fourth'
         mongo.save_document(result)
+
 
 def test_without_entity():
     result = clf.cluster_alchemy('re1', gamma=1)
@@ -23,7 +25,22 @@ def test_without_entity():
 
 
 def test_bow():
-    result = clf.scipy_algo('re0')
+    result = clf.scipy_algo('re1')
+
+
+def test_dandelion():
+    for i, g in enumerate(np.arange(0.1, 1, 0.01)):
+        result = clf.cluster_dandelion('re1', gamma=g)
+        pp.pprint(result)
+        result['n_attempt'] = i+1
+        result['test'] = 'second_dandelion_re1'
+        result['dataset'] = 're1'
+        mongo.save_document(result)
+
+
+def madness():
+    result = clf.cluster_dandelion('re1', gamma=0.93)
+    pp.pprint(result)
 
 if __name__ == '__main__':
     test_without_entity()

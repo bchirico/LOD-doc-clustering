@@ -57,7 +57,9 @@ docs/_build/
 target/
 
 # my ignore
-results.csv
+.idea
+.ipynb_checkpoints
+/results.csv
 api_key.txt
 alchemyapi_python/
 LOD-entity-recommendation/

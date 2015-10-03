@@ -97,6 +97,7 @@ class DocumentsProcessor:
         files_name = ['re0, re1']
         self.dataset_name = dataset_name
         self.mongo = mongo_hc.MongoHC('hc', self.dataset_name)
+        self.dbpedia = mongo_hc.MongoHC('hc', 'dbpedia')
         self.tokenizer = TextUtils.tokenize_and_stem
 
     @property
@@ -260,21 +261,104 @@ class DocumentsProcessor:
         return sparse.hstack([tfidf_matrix, entities_sparse]), f_score_dict,\
                params
 
-    def get_data_with_dandelion(self, relevance_threshold=0.8, min_df=0.003,
-                              gamma=0.89 ):
-        # TODO: implementare clustering come con alchemy
+    def get_dandelion_entities(self, data):
+        entities = set()
+
+        for d in data:
+            for e in d['dandelion']['annotations']:
+                entities.add(e['title'])
+
+        entities_dict = {e: 0 for e in entities}
+
+        for d in data:
+            for e in d['dandelion']['annotations']:
+                entities_dict[e['title']] += 1
+
+        return entities_dict, entities
+
+    def get_data_with_dandelion(self, relevance_threshold=0.75, min_df=0.003,
+                              gamma=0.89, filter=False):
         print gamma
         data = self.mongo.get_all(order_by='id_doc')
 
         data = [doc for doc in data]
-        only_text = [doc['text'] for doc in data]
+        #only_text = [doc['text'] for doc in data]
+        only_text = []
 
-        ent_dict, ent_set = self.entities_distribution(data)
+        ent_dict, ent_set = self.get_dandelion_entities(data)
 
         if filter:
             entities_set = set([k for k, v in ent_dict.iteritems() if (v > 2 and v < 300)])
         else:
             entities_set = ent_set
+
+        entities = {e: i for i, e in enumerate(entities_set)}
+        dandelion_entities = np.zeros((len(data), len(entities_set)))
+        for doc in data:
+            if 'dandelion' in doc:
+                text = doc['text']
+                for e in doc['dandelion']['annotations']:
+                    text += ' '
+                    abstract = self.dbpedia.get_element_by_mongo_id(e['lod']['dbpedia'])
+                    if abstract:
+                        text += abstract['abstract']['value']
+                    rel = np.float64(e['confidence'])
+                    name = e['title']
+                    if rel > relevance_threshold and name in entities:
+                        dandelion_entities[doc['id_doc']][entities[name]] = rel
+                    only_text.append(text)
+
+        entities_sparse = sparse.csr_matrix(dandelion_entities)
+
+        tfidf_vectorizer = TfidfVectorizer(max_df=0.5,
+                                           max_features=200000,
+                                           min_df=min_df,
+                                           stop_words='english',
+                                           strip_accents='unicode',
+                                           use_idf=True,
+                                           ngram_range=(1, 1),
+                                           norm='l2',
+                                           tokenizer=TextUtils.tokenize_and_stem)
+        tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
+
+        print 'tfifd matrix dimension: %s x %s' %(tfidf_matrix.shape[0],
+                                                  tfidf_matrix.shape[1])
+        print 'dandelion matrix dimension: %s x %s ' %(entities_sparse.shape[0],
+                                                     entities_sparse.shape[1])
+        print 'non zero elements in alchemy matrix: %s' \
+              % len(entities_sparse.data)
+
+        '''print tfidf_matrix[tfidf_matrix > 0].mean()
+        print tfidf_matrix[tfidf_matrix > 0].max()
+
+        print entities_sparse[entities_sparse > 0].mean()
+        print entities_sparse[entities_sparse > 0].max()
+        print '#' * 80'''
+        #print 'after balancing'
+
+        tfidf_matrix = tfidf_matrix * 1
+        entities_sparse = entities_sparse * (1 - gamma)
+
+        #print tfidf_matrix[tfidf_matrix > 0].mean()
+        #print tfidf_matrix[tfidf_matrix > 0].max()
+
+        #print entities_sparse[entities_sparse > 0].mean()
+        #print entities_sparse[entities_sparse > 0].max()
+
+        f_score_dict = self.labels_dict(data)
+        params = tfidf_vectorizer.get_params()
+        params['dandelion_entities'] = entities_sparse.shape[1]
+        params['original_terms'] = tfidf_matrix.shape[0]
+        params['gamma'] = gamma
+        params['relevance_threshold'] = relevance_threshold
+        params['classes'] = len(f_score_dict)
+        params['tokenizer'] = 'TextUtils.tokenize_and_stem'
+        del params['dtype']
+
+        params['avg_nnz_row'] = (entities_sparse > 0).sum(1).mean()
+
+        return sparse.hstack([tfidf_matrix, entities_sparse]), f_score_dict,\
+               params
 
     def dimensionality_reduction(self):
         # TODO -  uning PCA or other method
@@ -349,6 +433,9 @@ def test_tokenize_abstract(dataset):
 
         # pp.pprint(ret)
 
+def test_dandelion_abstract():
+    docp = DocumentsProcessor('re0')
+    docp.get_data_with_dandelion()
 
 def main():
     parser = argparse.ArgumentParser(

@@ -28,6 +28,10 @@ class MongoHC:
     def update_document(self, doc):
         pass
 
+    def get_element_by_mongo_id(self, id, collection=None):
+        c = getattr(self.db, collection) if collection else self.collection
+        return c.find_one({'_id': id})
+
     def get_element_by_id(self, id, collection=None):
         c = getattr(self.db, collection) if collection else self.collection
         return c.find_one({'id_doc': id})
@@ -45,10 +49,13 @@ class MongoHC:
             return c.find(query).sort([(order_by, pm.ASCENDING)])
         return c.find(query)
 
-    def get_empty_abstract(self, collection=None):
+    def get_empty_abstract(self, collection=None, order_by=None):
         c = getattr(self.db, collection) if collection else self.collection
         query = {'abstracts': {'$exists': True, '$size': 0}}
-        return c.find(query)
+        if order_by:
+            return c.find(query).sort([(order_by, pm.ASCENDING)])
+        else:
+            return c.find(query)
 
     def get_doc_with_no_key(self, key, collection=None, order_by=None):
         c = getattr(self.db, collection) if collection else self.collection
