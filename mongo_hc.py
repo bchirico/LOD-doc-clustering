@@ -84,6 +84,7 @@ class MongoHC:
         else:
             return True
 
+
 def mongo_test():
     mongo = MongoHC('hc', 'test')
     for i in range(10):
@@ -101,6 +102,7 @@ def mongo_test():
     for doc in cursor:
         pp.pprint(doc)
 
+
 def init_db(dataset, db):
     from document_processor import DocumentsProcessor
     dp = DocumentsProcessor(dataset)
@@ -111,7 +113,7 @@ def init_db(dataset, db):
 
         for k, v in data.iteritems():
             for doc in v['docs']:
-                print 'Saving document %s' %doc['id_doc']
+                print 'Saving document %s' % doc['id_doc']
                 mongo_hc.save_document(doc)
 
 def duplicate_db(dataset, db):

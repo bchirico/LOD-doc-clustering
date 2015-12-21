@@ -4,6 +4,10 @@ import config
 import itertools
 import operator
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import Normalizer
+from sklearn.metrics.pairwise import cosine_similarity
 from scipy import sparse
 from sklearn import decomposition
 from sklearn.cluster import KMeans
@@ -140,7 +144,7 @@ class DocumentsProcessor:
         only_labels = [doc['label'] for doc in data]
         tfidf_vectorizer = TfidfVectorizer(max_df=0.5,
                                            max_features=200000,
-                                           min_df=0.003,
+                                           min_df=2,
                                            stop_words='english',
                                            strip_accents='unicode',
                                            use_idf=True,
@@ -276,39 +280,94 @@ class DocumentsProcessor:
 
         return entities_dict, entities
 
-    def get_data_with_dandelion(self, relevance_threshold=0.75, min_df=0.003,
-                              gamma=0.89, filter=False):
-        print gamma
+    def get_data_with_abstract_2(self, relevance_threshold=0.65):
         data = self.mongo.get_all(order_by='id_doc')
 
         data = [doc for doc in data]
-        #only_text = [doc['text'] for doc in data]
         only_text = []
-
         ent_dict, ent_set = self.get_dandelion_entities(data)
 
         if filter:
-            entities_set = set([k for k, v in ent_dict.iteritems() if (v > 2 and v < 300)])
+            entities_set = set([k for k, v in ent_dict.iteritems()])
         else:
             entities_set = ent_set
-
         entities = {e: i for i, e in enumerate(entities_set)}
         dandelion_entities = np.zeros((len(data), len(entities_set)))
-        for doc in data:
+
+        for doc in data[:]:
+            text = doc['text']
             if 'dandelion' in doc:
-                text = doc['text']
+                abstract_matrix = []
+                abstract_matrix.append(text)
                 for e in doc['dandelion']['annotations']:
                     text += ' '
                     abstract = self.dbpedia.get_element_by_mongo_id(e['lod']['dbpedia'])
                     if abstract:
-                        text += abstract['abstract']['value']
+                        abstract_matrix.append(abstract['abstract']['value'])
+
                     rel = np.float64(e['confidence'])
                     name = e['title']
-                    if rel > relevance_threshold and name in entities:
-                        dandelion_entities[doc['id_doc']][entities[name]] = rel
-                    only_text.append(text)
+                    if rel > relevance_threshold:
 
-        entities_sparse = sparse.csr_matrix(dandelion_entities)
+                        if abstract:
+                            text += abstract['abstract']['value']
+                        dandelion_entities[doc['id_doc']][entities[name]] = rel
+                tfidf_vectorizer = TfidfVectorizer(max_df=0.8,
+                                       max_features=200000,
+                                       min_df=2,
+                                       stop_words='english',
+                                       strip_accents='unicode',
+                                       use_idf=True,
+                                       ngram_range=(1, 1),
+                                       norm='l2',
+                                       tokenizer=TextUtils.tokenize_and_stem)
+
+                try:
+                    mat = tfidf_vectorizer.fit_transform(abstract_matrix)
+
+                    # calcolo la sim tra il testo originale e gli abstract
+                    sim_matrix = cosine_similarity(mat[0:1], mat)[0]
+                    text = abstract_matrix[0]
+                    for i, sim in enumerate(sim_matrix):
+                        if 0.5 < sim < 1.0 and i != 0:
+                            #print 'doc %s sim %s' %(doc['id_doc'], sim)
+                            text += ' '
+                            text += abstract_matrix[i]
+                except ValueError:
+                    text = abstract_matrix[0]
+
+            only_text.append(text)
+
+        return only_text, dandelion_entities, data
+
+    def get_data_only_with_abstract(self, relevance_threshold=0.75, min_df=0.01,
+                              gamma=0.89, filter=False):
+        only_text, ent, data = self.get_data_with_abstract_2(relevance_threshold)
+        tfidf_vectorizer = TfidfVectorizer(max_df=0.5,
+                                           max_features=200000,
+                                           min_df=min_df,
+                                           stop_words='english',
+                                           strip_accents='unicode',
+                                           use_idf=True,
+                                           ngram_range=(1, 1),
+                                           norm='l2',
+                                           tokenizer=TextUtils.tokenize_and_stem)
+
+        tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
+        f_score_dict = self.labels_dict(data)
+        params = tfidf_vectorizer.get_params()
+        params['original_terms'] = tfidf_matrix.shape[0]
+        params['gamma'] = gamma
+        params['relevance_threshold'] = relevance_threshold
+        params['classes'] = len(f_score_dict)
+        params['tokenizer'] = 'TextUtils.tokenize_and_stem'
+
+        return tfidf_matrix, f_score_dict, params
+
+    def get_data_with_dandelion(self, relevance_threshold=0.75, min_df=2,
+                              gamma=0.89, filter=False):
+        only_text, ent, data = self.get_data_with_abstract_2(relevance_threshold)
+        entities_sparse = sparse.csr_matrix(ent)
 
         tfidf_vectorizer = TfidfVectorizer(max_df=0.5,
                                            max_features=200000,
@@ -319,13 +378,91 @@ class DocumentsProcessor:
                                            ngram_range=(1, 1),
                                            norm='l2',
                                            tokenizer=TextUtils.tokenize_and_stem)
+
         tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
 
         print 'tfifd matrix dimension: %s x %s' %(tfidf_matrix.shape[0],
                                                   tfidf_matrix.shape[1])
-        print 'dandelion matrix dimension: %s x %s ' %(entities_sparse.shape[0],
+        print 'entities matrix dimension: %s x %s ' %(entities_sparse.shape[0],
                                                      entities_sparse.shape[1])
-        print 'non zero elements in alchemy matrix: %s' \
+        print 'non zero elements in entities matrix: %s' \
+              % len(entities_sparse.data)
+
+        '''print tfidf_matrix[tfidf_matrix > 0].mean()
+        print tfidf_matrix[tfidf_matrix > 0].max()
+
+        print entities_sparse[entities_sparse > 0].mean()
+        print entities_sparse[entities_sparse > 0].max()
+        print '#' * 80'''
+        #print 'after balancing'
+
+        tfidf_matrix = tfidf_matrix * 1
+        entities_sparse = entities_sparse * (1 - gamma)
+
+        #print tfidf_matrix[tfidf_matrix > 0].mean()
+        #print tfidf_matrix[tfidf_matrix > 0].max()
+
+        #print entities_sparse[entities_sparse > 0].mean()
+        #print entities_sparse[entities_sparse > 0].max()
+
+        f_score_dict = self.labels_dict(data)
+        params = tfidf_vectorizer.get_params()
+        params['dandelion_entities'] = entities_sparse.shape[1]
+        params['original_terms'] = tfidf_matrix.shape[0]
+        params['gamma'] = gamma
+        params['relevance_threshold'] = relevance_threshold
+        params['classes'] = len(f_score_dict)
+        params['tokenizer'] = 'TextUtils.tokenize_and_stem'
+        del params['dtype']
+
+        params['avg_nnz_row'] = (entities_sparse > 0).sum(1).mean()
+
+        return sparse.hstack([tfidf_matrix, entities_sparse]), f_score_dict, params
+        #return tfidf_matrix, f_score_dict, params
+
+    def get_data_only_with_entities(self, relevance_threshold=0.75, gamma=0.89, filter=False):
+        data = self.mongo.get_all(order_by='id_doc')
+
+        data = [doc for doc in data]
+        only_text = [doc['text'] for doc in data]
+
+        ent_dict, ent_set = self.get_dandelion_entities(data)
+
+        if filter:
+            entities_set = set([k for k, v in ent_dict.iteritems()])
+        else:
+            entities_set = ent_set
+        entities = {e: i for i, e in enumerate(entities_set)}
+        dandelion_entities = np.zeros((len(data), len(entities_set)))
+
+        for doc in data[:]:
+            text = doc['text']
+            if 'dandelion' in doc:
+                for e in doc['dandelion']['annotations']:
+                    rel = np.float64(e['confidence'])
+                    name = e['title']
+                    if rel > relevance_threshold:
+                        dandelion_entities[doc['id_doc']][entities[name]] = rel
+
+        entities_sparse = sparse.csr_matrix(dandelion_entities)
+
+        tfidf_vectorizer = TfidfVectorizer(max_df=0.5,
+                                           max_features=200000,
+                                           min_df=2,
+                                           stop_words='english',
+                                           strip_accents='unicode',
+                                           use_idf=True,
+                                           ngram_range=(1, 1),
+                                           norm='l2',
+                                           tokenizer=TextUtils.tokenize_and_stem)
+
+        tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
+
+        print 'tfifd matrix dimension: %s x %s' %(tfidf_matrix.shape[0],
+                                                  tfidf_matrix.shape[1])
+        print 'entities matrix dimension: %s x %s ' %(entities_sparse.shape[0],
+                                                     entities_sparse.shape[1])
+        print 'non zero elements in entities matrix: %s' \
               % len(entities_sparse.data)
 
         '''print tfidf_matrix[tfidf_matrix > 0].mean()

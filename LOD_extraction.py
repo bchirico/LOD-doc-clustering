@@ -261,17 +261,20 @@ def entities_distribution(db, dataset):
     return entities_dict, entities
 
 def test_alchemy():
-    text = "The decision by the independent MP Andrew Wilkie to withdraw his support for the minority Labor government sounded dramatic but it should not further threaten its stability. When, after the 2010 election, Wilkie, Rob Oakeshott, Tony Windsor and the Greens agreed to support Labor, they gave just two guarantees: confidence and supply"
+    text_1 = "The decision by the independent MP Andrew Wilkie to withdraw his support for the minority Labor government sounded dramatic but it should not further threaten its stability. When, after the 2010 election, Wilkie, Rob Oakeshott, Tony Windsor and the Greens agreed to support Labor, they gave just two guarantees: confidence and supply"
+    text_2 = "inflation plan, initially hailed at home and abroad as the saviour of the economy, is limping towards its first anniversary amid soaring prices, widespread shortages and a foreign payments crisis.     Announced last February 28 the plan  prices, fixed the value of the new Cruzado currency and ended widespread indexation of the economy in a bid to halt the country's 250 pct inflation rate.     But within a year the plan has all but collapsed.     \"The situation now is worse than it was. Although there was inflation, at least the economy worked,\" a leading bank economist said.     The crumbling of the plan has been accompanied by a dramatic reversal in the foreign trade account. In 1984 and 1985 Brazil's annual trade surpluses had been sufficient to cover the 12 billion dlrs needed to service its 109 billion dlr foreign debt.     For the first nine months of 1986 all seemed to be on target for a repeat, with monthly surpluses averaging one billion dlrs. But as exports were diverted and imports increased to avoid further domestic shortages the trade surplus plunged to 211 mln dlrs in October and since then has averaged under 150 mln.  Reuter "
     alchemyapi = AlchemyAPI()
-    response = alchemyapi.entities('text', text, {'sentiment': 1})
+    response = alchemyapi.entities('text', text_2, {'sentiment': 1})
 
     pp.pprint(response)
+    print len(response['entities'])
 
 def test_dandelion():
-    text = "The decision by the independent MP Andrew Wilkie to withdraw his support for the minority Labor government sounded dramatic but it should not further threaten its stability. When, after the 2010 election, Wilkie, Rob Oakeshott, Tony Windsor and the Greens agreed to support Labor, they gave just two guarantees: confidence and supply"
-    result = get_entities_from_dandelion(text)
+    text_1 = "The decision by the independent MP Andrew Wilkie to withdraw his support for the minority Labor government sounded dramatic but it should not further threaten its stability. When, after the 2010 election, Wilkie, Rob Oakeshott, Tony Windsor and the Greens agreed to support Labor, they gave just two guarantees: confidence and supply"
+    text_2 = "inflation plan, initially hailed at home and abroad as the saviour of the economy, is limping towards its first anniversary amid soaring prices, widespread shortages and a foreign payments crisis.     Announced last February 28 the plan  prices, fixed the value of the new Cruzado currency and ended widespread indexation of the economy in a bid to halt the country's 250 pct inflation rate.     But within a year the plan has all but collapsed.     \"The situation now is worse than it was. Although there was inflation, at least the economy worked,\" a leading bank economist said.     The crumbling of the plan has been accompanied by a dramatic reversal in the foreign trade account. In 1984 and 1985 Brazil's annual trade surpluses had been sufficient to cover the 12 billion dlrs needed to service its 109 billion dlr foreign debt.     For the first nine months of 1986 all seemed to be on target for a repeat, with monthly surpluses averaging one billion dlrs. But as exports were diverted and imports increased to avoid further domestic shortages the trade surplus plunged to 211 mln dlrs in October and since then has averaged under 150 mln.  Reuter "
+    result = get_entities_from_dandelion(text_2)
 
-    pp.pprint(result)
+    pp.pprint(len(result['annotations']))
 
 def main():
     parser = argparse.ArgumentParser(
@@ -312,6 +315,6 @@ def main():
         extract_dandelion(db, dataset)
 
 if __name__ == '__main__':
-    main()
-    #test_alchemy()
-    #get_abstract()
+    #main()
+    test_alchemy()
+    test_dandelion()

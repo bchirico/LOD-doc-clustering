@@ -1,11 +1,13 @@
-__author__ = 'biagio'
-
 import pprint as pp
 import numpy as np
 from scipy.cluster import hierarchy as hr
 import argparse
-
+from sklearn.decomposition import TruncatedSVD
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import Normalizer
 import document_processor as dp
+
+__author__ = 'biagio'
 
 
 # TODO: refactoring delle funzioni, c'e' troppa ripetizione e non ho voglia di
@@ -15,7 +17,16 @@ def scipy_algo(dataset, abstract=False):
     doc_proc = dp.DocumentsProcessor(dataset)
     tfidf_matrix, f_score_dict = doc_proc.get_data(abstract)
 
+    svd = TruncatedSVD(tfidf_matrix.shape[0])
+    lsa = make_pipeline(svd, Normalizer(copy=False))
+
+    #tfidf_matrix = lsa.fit_transform(tfidf_matrix)
+
+    print 'starting clustering after lsa: found %s document and %s features' \
+          % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
+
     linkage_matrix = hr.average(tfidf_matrix.toarray())
+    #linkage_matrix = hr.average(tfidf_matrix)
 
     t = hr.to_tree(linkage_matrix, rd=True)
 
@@ -105,7 +116,7 @@ def cluster_alchemy(dataset, gamma=None, filter=False):
     return params
 
 
-def cluster_dandelion(dataset, gamma=None, filter=False):
+def cluster_dandelion(dataset, gamma=0.89, filter=False):
     doc_proc = dp.DocumentsProcessor(dataset)
     if gamma:
         tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_dandelion(
@@ -116,7 +127,138 @@ def cluster_dandelion(dataset, gamma=None, filter=False):
     print 'starting clustering: found %s document and %s features' \
           % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
 
-    linkage_matrix = hr.average(tfidf_matrix.toarray())
+    svd = TruncatedSVD(tfidf_matrix.shape[0])
+    lsa = make_pipeline(svd, Normalizer(copy=False))
+
+    tfidf_matrix = lsa.fit_transform(tfidf_matrix)
+
+    print 'starting clustering after lsa: found %s document and %s features' \
+          % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
+
+    #linkage_matrix = hr.average(tfidf_matrix.toarray())
+    linkage_matrix = hr.average(tfidf_matrix)
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    l = print_f_score_dict(f)
+
+    params['avg_f_score'] = average_f_score(f, tfidf_matrix.shape[0])
+    params['all_fscore'] = l
+
+    print 'average f_score: %s' % params['avg_f_score']
+    return params
+
+
+def cluster_dandelion_2(dataset, gamma=0.91, filter=False):
+    #duplicato, mi serve solo per tornare la linkage_matrix
+    doc_proc = dp.DocumentsProcessor(dataset)
+    if gamma:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_dandelion(
+            gamma=gamma, filter=filter)
+    else:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_with_dandelion()
+
+    svd = TruncatedSVD(tfidf_matrix.shape[0])
+    lsa = make_pipeline(svd, Normalizer(copy=False))
+
+    tfidf_matrix = lsa.fit_transform(tfidf_matrix)
+
+    #linkage_matrix = hr.average(tfidf_matrix.toarray())
+    linkage_matrix = hr.average(tfidf_matrix)
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    l = print_f_score_dict(f)
+
+    params['avg_f_score'] = average_f_score(f, tfidf_matrix.shape[0])
+    params['all_fscore'] = l
+
+    return linkage_matrix
+
+
+def cluster_dandelion_abstract(dataset, gamma=None, filter=False):
+    doc_proc = dp.DocumentsProcessor(dataset)
+    if gamma:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_only_with_abstract(
+            gamma=gamma, filter=filter)
+    else:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_only_with_abstract(min_df=2, relevance_threshold=0.95)
+
+    doc, features = tfidf_matrix.shape
+
+    print 'starting clustering: found %s document and %s features' \
+          % (doc, features)
+
+    svd = TruncatedSVD(1300)
+    lsa = make_pipeline(svd, Normalizer(copy=False))
+
+    tfidf_matrix = lsa.fit_transform(tfidf_matrix)
+
+    print 'starting clustering: found %s document and %s features after LSA' \
+         % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
+
+    #linkage_matrix = hr.average(tfidf_matrix.toarray())
+    linkage_matrix = hr.average(tfidf_matrix)
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    l = print_f_score_dict(f)
+
+    params['avg_f_score'] = average_f_score(f, tfidf_matrix.shape[0])
+    params['all_fscore'] = l
+
+    print 'average f_score: %s' % params['avg_f_score']
+    return params
+
+def cluster_dandelion_entities(dataset, gamma=None, filter=False):
+    doc_proc = dp.DocumentsProcessor(dataset)
+    if gamma:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_only_with_entities(gamma=gamma, filter=filter)
+    else:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_only_with_entities()
+
+    doc, features = tfidf_matrix.shape
+
+    print 'starting clustering: found %s document and %s features' \
+          % (doc, features)
+
+    svd = TruncatedSVD(tfidf_matrix.shape[0])
+    lsa = make_pipeline(svd, Normalizer(copy=False))
+
+    tfidf_matrix = lsa.fit_transform(tfidf_matrix)
+
+    print 'starting clustering: found %s document and %s features after LSA' \
+         % (tfidf_matrix.shape[0], tfidf_matrix.shape[1])
+
+    #linkage_matrix = hr.average(tfidf_matrix.toarray())
+    linkage_matrix = hr.average(tfidf_matrix)
 
     t = hr.to_tree(linkage_matrix, rd=True)
 
@@ -200,6 +342,12 @@ if __name__ == '__main__':
                         required=False,
                         action='store_true')
 
+    parser.add_argument('--entities', '-e',
+                        dest='entities',
+                        help='specify action to perform',
+                        required=False,
+                        action='store_true')
+
     parser.add_argument('--alchemy',
                         dest='alchemy',
                         help='Cluster solutions is obtained with BOW method and'
@@ -222,5 +370,7 @@ if __name__ == '__main__':
         cluster_alchemy(dataset)
     elif args.dandelion:
         cluster_dandelion(dataset)
-    else:
-        scipy_algo(dataset, args.abstract)
+    elif args.abstract:
+        cluster_dandelion_abstract(dataset)
+    elif args.entities:
+        cluster_dandelion_entities(dataset)
