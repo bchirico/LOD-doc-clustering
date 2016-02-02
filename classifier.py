@@ -282,9 +282,11 @@ def cluster_dandelion_entities(dataset, gamma=None, filter=False):
 def cluster_fabio(db, dataset, gamma=None, with_lsa=False, ranking_metric='r'):
     doc_proc = dp.DocumentsProcessor(dataset, db=db)
     if gamma:
-        tfidf_matrix, f_score_dict, params = doc_proc.get_data_fabio(ranking_metric, gamma=gamma)
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_fabio(
+            rank_metric=ranking_metric, gamma=gamma)
     else:
-        tfidf_matrix, f_score_dict, params = doc_proc.get_data_fabio(ranking_metric)
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_fabio(
+            rank_metric=ranking_metric)
 
     doc, features = tfidf_matrix.shape
 

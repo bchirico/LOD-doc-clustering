@@ -77,10 +77,13 @@ def test_text_vectorization():
     print top_features
 
 
-def test_fabio(db, dataset, gamma=0.5, ranking_metric='pr', lsa=False):
+def test_fabio(db, dataset, gamma=0.5, ranking_metric='pr', lsa=False, save=False):
+    mongo_result = MongoHC(db, 'test_fabio')
     result = clf.cluster_fabio(db, dataset, gamma=gamma,
                                ranking_metric=ranking_metric,
                                with_lsa=lsa)
+    if save:
+        mongo_result.save_document(result)
     pp.pprint(result)
 
 
@@ -93,6 +96,7 @@ if __name__ == '__main__':
     parser.add_argument('-g', '--gamma',
                         dest='gamma',
                         help = 'weight parameter',
+                        type=float,
                         required=False,
                         default=0.5)
     parser.add_argument('-d',
@@ -116,16 +120,19 @@ if __name__ == '__main__':
                         help='lsa technique',
                         required=False,
                         action='store_true')
+    parser.add_argument('-s', '--save',
+                        dest='store_mongo',
+                        help='save result on MongoDB',
+                        required=False,
+                        action='store_true')
 
     args = parser.parse_args()
 
-    print args
-
-    test_fabio(args.db,
-               args.collection,
-               gamma=args.gamma,
-               ranking_metric=args.rank_param,
-               lsa=args.lsa)
-
+test_fabio(args.db,
+           args.collection,
+           gamma=args.gamma,
+           ranking_metric=args.rank_param,
+           lsa=args.lsa,
+           save=args.store_mongo)
 
 
