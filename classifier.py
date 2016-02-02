@@ -279,6 +279,46 @@ def cluster_dandelion_entities(dataset, gamma=None, filter=False):
     print 'average f_score: %s' % params['avg_f_score']
     return params
 
+def cluster_fabio(db, dataset, gamma=None, with_lsa=False, ranking_metric='r'):
+    doc_proc = dp.DocumentsProcessor(dataset, db=db)
+    if gamma:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_fabio(ranking_metric, gamma=gamma)
+    else:
+        tfidf_matrix, f_score_dict, params = doc_proc.get_data_fabio(ranking_metric)
+
+    doc, features = tfidf_matrix.shape
+
+    print 'starting clustering: found %s document and %s features' \
+          % (doc, features)
+
+    if with_lsa:
+        svd = TruncatedSVD(tfidf_matrix.shape[0])
+        lsa = make_pipeline(svd, Normalizer(copy=False))
+
+        tfidf_matrix = lsa.fit_transform(tfidf_matrix)
+        linkage_matrix = hr.average(tfidf_matrix)
+    else:
+        linkage_matrix = hr.average(tfidf_matrix.toarray())
+
+    t = hr.to_tree(linkage_matrix, rd=True)
+
+    clusters = {}
+
+    for node in t[1]:
+        if not node.is_leaf():
+            l = []
+            clusters[node.get_id()] = collect_leaf_nodes(node, l)
+
+    f = f_score(clusters, f_score_dict)
+
+    l = print_f_score_dict(f)
+
+    params['avg_f_score'] = average_f_score(f, tfidf_matrix.shape[0])
+    params['all_fscore'] = l
+
+    print 'average f_score: %s' % params['avg_f_score']
+    return params
+
 
 def collect_leaf_nodes(node, leaves):
     if node is not None:

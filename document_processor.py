@@ -97,11 +97,11 @@ test9:  tfidf_vectorizer = TfidfVectorizer(max_df=1.0, max_features=200000,
 #TODO: questo ha la priorita' assoluta, c'e' troppo casino e codice ripetuto
 
 class DocumentsProcessor:
-    def __init__(self, dataset_name):
+    def __init__(self, dataset_name, db='hc'):
         files_name = ['re0, re1']
         self.dataset_name = dataset_name
-        self.mongo = mongo_hc.MongoHC('hc', self.dataset_name)
-        self.dbpedia = mongo_hc.MongoHC('hc', 'dbpedia')
+        self.mongo = mongo_hc.MongoHC(db, self.dataset_name)
+        self.dbpedia = mongo_hc.MongoHC(db, 'dbpedia')
         self.tokenizer = TextUtils.tokenize_and_stem
 
     @property
@@ -419,6 +419,72 @@ class DocumentsProcessor:
 
         return sparse.hstack([tfidf_matrix, entities_sparse]), f_score_dict, params
         #return tfidf_matrix, f_score_dict, params
+
+    def get_data_fabio(self, gamma=0.89, rank_metric='r'):
+        data = self.mongo.get_all(order_by='id_doc')
+
+        data = [doc for doc in data]
+        only_text = [doc['text'] for doc in data]
+
+        entitySet = set()
+        for d in data:
+            if 'isa' in d:
+                for e in d['isa']:
+                    entitySet.add(e['entity'])
+
+        current = np.zeros((len(data), len(entitySet)), dtype=np.float)
+        count = 0
+        invIndex = {}
+        countFeatures = 0
+        for i,d in enumerate(data):
+            if 'isa' in d:
+                for f in d['isa']:
+                    if f['entity'] not in invIndex:
+                       invIndex[f['entity']] = countFeatures
+                       countFeatures += 1
+                    current[count, invIndex[f['entity']]] = f[rank_metric]
+            count += 1
+        current = np.nan_to_num(current)
+        current_sparse = sparse.csr_matrix(current)
+
+        tfidf_vectorizer = TfidfVectorizer(max_df=0.5,
+                                           max_features=200000,
+                                           min_df=2,
+                                           stop_words='english',
+                                           strip_accents='unicode',
+                                           use_idf=True,
+                                           ngram_range=(1, 1),
+                                           norm='l2',
+                                           tokenizer=TextUtils.tokenize_and_stem)
+
+        tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
+
+        tfidf_matrix = tfidf_vectorizer.fit_transform(only_text)
+
+        print 'tfifd matrix dimension: %s x %s' %(tfidf_matrix.shape[0],
+                                                  tfidf_matrix.shape[1])
+        print 'entities matrix dimension: %s x %s ' %(current_sparse.shape[0],
+                                                     current_sparse.shape[1])
+        print 'non zero elements in entities matrix: %s' \
+              % len(current_sparse.data)
+
+        tfidf_matrix = tfidf_matrix * 1
+        entities_sparse = current_sparse * (1 - gamma)
+
+        f_score_dict = self.labels_dict(data)
+        params = tfidf_vectorizer.get_params()
+        params['dandelion_entities'] = entities_sparse.shape[1]
+        params['original_terms'] = tfidf_matrix.shape[0]
+        params['gamma'] = gamma
+        params['rank_metric'] = rank_metric
+        params['classes'] = len(f_score_dict)
+        params['tokenizer'] = 'TextUtils.tokenize_and_stem'
+        del params['dtype']
+
+        params['avg_nnz_row'] = (entities_sparse > 0).sum(1).mean()
+
+        return sparse.hstack([tfidf_matrix, entities_sparse]), f_score_dict,\
+               params
 
     def get_data_only_with_entities(self, relevance_threshold=0.75, gamma=0.89, filter=False):
         data = self.mongo.get_all(order_by='id_doc')

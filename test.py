@@ -6,6 +6,7 @@ import pprint as pp
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from text_utils import TextUtils
+import argparse
 
 mongo = MongoHC('hc', 'test_new')
 
@@ -76,10 +77,55 @@ def test_text_vectorization():
     print top_features
 
 
+def test_fabio(db, dataset, gamma=0.5, ranking_metric='pr', lsa=False):
+    result = clf.cluster_fabio(db, dataset, gamma=gamma,
+                               ranking_metric=ranking_metric,
+                               with_lsa=lsa)
+    pp.pprint(result)
+
 
 def madness():
     result = clf.cluster_dandelion('re1', gamma=0.93)
     pp.pprint(result)
 
 if __name__ == '__main__':
-   test_dandelion('re0')
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-g', '--gamma',
+                        dest='gamma',
+                        help = 'weight parameter',
+                        required=False,
+                        default=0.5)
+    parser.add_argument('-d',
+                        dest='db',
+                        help='db name',
+                        required=False,
+                        default='hc_fabio')
+    parser.add_argument('-c',
+                        dest='collection',
+                        help='collection name',
+                        required=True,
+                        choices=['re0', 're1'])
+    parser.add_argument('-r', '--rank-param',
+                        dest='rank_param',
+                        help='ranking metric',
+                        required=False,
+                        choices=['r', 'pr'],
+                        default='r')
+    parser.add_argument('-l', '--lsa',
+                        dest='lsa',
+                        help='lsa technique',
+                        required=False,
+                        action='store_true')
+
+    args = parser.parse_args()
+
+    print args
+
+    test_fabio(args.db,
+               args.collection,
+               gamma=args.gamma,
+               ranking_metric=args.rank_param,
+               lsa=args.lsa)
+
+
+
